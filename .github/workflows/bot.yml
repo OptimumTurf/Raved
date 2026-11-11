@@ -1,0 +1,120 @@
+name: Auto Commit Bot
+
+on:
+  schedule:
+    # Run every 2 hours to distribute commits throughout the day
+    - cron: "0 */2 * * *"  # Every 2 hours (12 times per day)
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.STREAK_ME }}
+          fetch-depth: 0
+
+      - name: Determine daily commit target and current progress
+        id: commit_plan
+        run: |
+          # Get current date for consistency
+          TODAY=$(date +%Y-%m-%d)
+          echo "Today is: $TODAY"
+          
+          # Use date as seed to generate same random number all day
+          # Convert date to number and use as seed
+          DATE_SEED=$(date +%Y%m%d)
+          echo "Date seed: $DATE_SEED"
+          
+          # Generate random number 4-7 using date as seed
+          # This ensures the same target for the entire day
+          RANDOM_SEED=$((DATE_SEED % 32767))
+          TARGET_COMMITS=$(( (RANDOM_SEED % 4) + 4 ))
+          echo "Target commits for today: $TARGET_COMMITS"
+          
+          # Count commits made today by the bot
+          COMMITS_TODAY=$(git log --since="$TODAY 00:00:00" --until="$TODAY 23:59:59" --author="OptimumTurf" --oneline | wc -l)
+          echo "Commits made today: $COMMITS_TODAY"
+          
+          # Determine if we should commit
+          if [ $COMMITS_TODAY -lt $TARGET_COMMITS ]; then
+            echo "Need more commits ($COMMITS_TODAY/$TARGET_COMMITS) - will commit"
+            echo "should_commit=true" >> $GITHUB_OUTPUT
+            
+            # Add some randomness to timing - don't commit on every opportunity
+            # This spreads commits throughout the day instead of all at once
+            CURRENT_HOUR=$(date +%-H)
+            RANDOM_CHANCE=$((RANDOM % 100 + 1))
+            
+            # Higher chance to commit later in the day if behind schedule
+            HOURS_LEFT=$((24 - CURRENT_HOUR))
+            COMMITS_NEEDED=$((TARGET_COMMITS - COMMITS_TODAY))
+            
+            if [ $HOURS_LEFT -le $COMMITS_NEEDED ]; then
+              # Must commit now - running out of time
+              echo "Running out of time - must commit now"
+              echo "should_commit=true" >> $GITHUB_OUTPUT
+            elif [ $RANDOM_CHANCE -le 30 ]; then
+              # 30% chance to commit when we have time
+              echo "Random chance says yes - committing"
+              echo "should_commit=true" >> $GITHUB_OUTPUT
+            else
+              echo "Have time left - skipping this round"
+              echo "should_commit=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Target reached ($COMMITS_TODAY/$TARGET_COMMITS) - no more commits today"
+            echo "should_commit=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Rust
+        if: steps.commit_plan.outputs.should_commit == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run bot script
+        if: steps.commit_plan.outputs.should_commit == 'true'
+        run: cargo run
+        env:
+          STREAK_ME: ${{ secrets.STREAK_ME }}
+
+      - name: Debug environment
+        if: steps.commit_plan.outputs.should_commit == 'true'
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la
+          echo "Git status:"
+          git status
+
+      - name: Commit and push changes
+        if: steps.commit_plan.outputs.should_commit == 'true'
+        run: |
+          git config --global user.name "OptimumTurf"
+          git config --global user.email "evwerhamremorrison@gmail.com"
+          
+          # Add the file
+          git add random.txt || echo "No random.txt file found"
+          
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            # Add some randomness to commit message
+            MESSAGES=("Random update by Rust bot" "Automated random commit" "Bot generated update" "Random data commit" "Scheduled bot update" "Daily random commit" "Bot activity")
+            MSG_INDEX=$((RANDOM % ${#MESSAGES[@]}))
+            COMMIT_MSG="${MESSAGES[$MSG_INDEX]} - $(date +%H:%M)"
+            
+            git commit -m "$COMMIT_MSG"
+            
+            # Set remote URL with token authentication
+            git remote set-url origin https://x-access-token:${{ secrets.STREAK_ME }}@github.com/OptimumTurf/streak-me.git
+            
+            # Push changes with verbose output
+            git push --verbose
+            
+            echo "Successfully committed and pushed changes"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.STREAK_ME }}

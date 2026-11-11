@@ -45,7 +45,7 @@ jobs:
             
             # Add some randomness to timing - don't commit on every opportunity
             # This spreads commits throughout the day instead of all at once
-            CURRENT_HOUR=$(date +%-H)
+            CURRENT_HOUR=$(date +%H)
             RANDOM_CHANCE=$((RANDOM % 100 + 1))
             
             # Higher chance to commit later in the day if behind schedule

@@ -109,7 +109,7 @@ jobs:
             git commit -m "$COMMIT_MSG"
             
             # Set remote URL with token authentication
-            git remote set-url origin https://x-access-token:${{ secrets.STREAK_ME }}@github.com/OptimumTurf/streak-me.git
+            git remote set-url origin https://x-access-token:${{ secrets.STREAK_ME }}@github.com/OptimumTurf/Raved.git
             
             # Push changes with verbose output
             git push --verbose
